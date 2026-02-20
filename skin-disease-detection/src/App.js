@@ -3,10 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 function App() {
   // Provided API Key for the REST calls
   // Provided API Key for the REST calls
-  const API_KEY = process.env.REACT_APP_GOOGLE_API_KEY;
-  // Recommended model for image analysis and chat
-  const MODEL_NAME = 'gemini-2.5-flash';
-  const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${API_KEY}`;
+  
 
   const [image, setImage] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -117,141 +114,93 @@ function App() {
 
   // --- Image Analysis Function (Fixed API Endpoint) ---
   const analyzeImage = async () => {
-    if (!image) {
-      setError('Please select an image first');
-      return;
+  if (!image) {
+    setError('Please select an image first');
+    return;
+  }
+
+  setLoading(true);
+  setError('');
+
+  try {
+    const base64 = image.split(',')[1];
+
+    const response = await fetch(
+      "https://express-js-on-vercel-eight-sage-42.vercel.app/analyze",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          imageBase64: base64
+        })
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Analysis failed");
     }
 
-    setLoading(true);
-    setError('');
+    setResult({
+      analysis: data.result,
+      timestamp: new Date().toLocaleString()
+    });
 
-    try {
-      const base64 = image.split(',')[1];
-
-      const data = {
-        contents: [{
-          role: "user",
-          parts: [
-            { text: "Analyze this skin image. Provide disease name, confidence score, description, and medical disclaimer. Format the output clearly." },
-            { inline_data: { mime_type: "image/jpeg", data: base64 } }
-          ]
-        }]
-      };
-
-      // Use exponential backoff for retries
-      let json = null;
-      let attempt = 0;
-      const MAX_RETRIES = 3;
-
-      while (attempt < MAX_RETRIES) {
-        try {
-          const response = await fetch(
-            API_URL,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(data)
-            }
-          );
-
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`HTTP Error ${response.status}: ${errorText}`);
-          }
-
-          json = await response.json();
-          break; // Success, exit loop
-
-        } catch (err) {
-          if (attempt === MAX_RETRIES - 1) {
-            throw err; // Re-throw the last error
-          }
-          const delay = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
-          await new Promise(resolve => setTimeout(resolve, delay));
-          attempt++;
-        }
-      }
-
-      if (json && json.candidates && json.candidates[0]) {
-        const text = json.candidates[0].content.parts[0].text;
-        setResult({ analysis: text, timestamp: new Date().toLocaleString() });
-      } else {
-        setError('No analysis received from AI or unexpected response format.');
-      }
-
-    } catch (err) {
-      console.error("Analysis Error:", err);
-      setError('Analysis failed: Could not connect to AI service or API error. Details: ' + err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+  } catch (err) {
+    console.error("Analysis Error:", err);
+    setError("Analysis failed: " + err.message);
+  } finally {
+    setLoading(false);
+  }
+};
 
   // --- Chatbot Function (Fixed API Endpoint) ---
   const sendMessage = async () => {
-    if (userMessage.trim() === '') return;
+  if (userMessage.trim() === '') return;
 
-    const newMessage = { role: 'user', text: userMessage };
-    setChatHistory(prev => [...prev, newMessage]);
-    setUserMessage('');
-    setIsChatting(true);
+  const newMessage = { role: 'user', text: userMessage };
+  setChatHistory(prev => [...prev, newMessage]);
+  setUserMessage('');
+  setIsChatting(true);
 
-    try {
-      const prompt = 'Answer this skin health question: "' + userMessage + '". Provide helpful information but remind users to consult healthcare professionals.';
-
-      const data = {
-        contents: [{
-          role: "user",
-          parts: [{ text: prompt }]
-        }]
-      };
-
-      let json = null;
-      let attempt = 0;
-      const MAX_RETRIES = 3;
-
-      while (attempt < MAX_RETRIES) {
-        try {
-          const response = await fetch(
-            API_URL,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(data)
-            }
-          );
-
-          if (!response.ok) {
-            throw new Error(`HTTP Error ${response.status}`);
-          }
-
-          json = await response.json();
-          break; // Success, exit loop
-
-        } catch (err) {
-          if (attempt === MAX_RETRIES - 1) {
-            throw err; // Re-throw the last error
-          }
-          const delay = Math.pow(2, attempt) * 1000;
-          await new Promise(resolve => setTimeout(resolve, delay));
-          attempt++;
-        }
+  try {
+    const response = await fetch(
+      "https://express-js-on-vercel-eight-sage-42.vercel.app/analyze",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          prompt: `Answer this skin health question: "${userMessage}". Provide helpful information and remind users to consult healthcare professionals.`
+        })
       }
+    );
 
-      if (json && json.candidates && json.candidates[0]) {
-        const botMessage = json.candidates[0].content.parts[0].text;
-        setChatHistory(prev => [...prev, { role: 'bot', text: botMessage }]);
-      } else {
-        setChatHistory(prev => [...prev, { role: 'bot', text: 'Sorry, I could not process your question.' }]);
-      }
+    const data = await response.json();
 
-    } catch (err) {
-      console.error("Chat Error:", err);
-      setChatHistory(prev => [...prev, { role: 'bot', text: 'I am experiencing technical difficulties. Please try again later.' }]);
-    } finally {
-      setIsChatting(false);
+    if (!response.ok) {
+      throw new Error(data.error || "Chat failed");
     }
-  };
+
+    setChatHistory(prev => [
+      ...prev,
+      { role: 'bot', text: data.result }
+    ]);
+
+  } catch (err) {
+    console.error("Chat Error:", err);
+    setChatHistory(prev => [
+      ...prev,
+      { role: 'bot', text: "Technical error. Please try again later." }
+    ]);
+  } finally {
+    setIsChatting(false);
+  }
+};
 
   // Helper for responsive layout
   const isMobile = window.innerWidth <= 768;
